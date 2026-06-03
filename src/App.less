@@ -1,0 +1,137 @@
+// ========== 设计变量 ==========
+@border-light: #f0f1f2;
+@text-placeholder: #8f959e;
+@radius: 6px;
+@gap: 6px;
+
+// ========== 全局 ==========
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+.app {
+  padding: 16px;
+  margin: 0 auto;
+
+  &.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+  }
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+// ========== 必填星号 ==========
+.req {
+  color: #f54a45;
+}
+
+// ========== 字段下拉（容器布局，控件本身由 antd 接管） ==========
+.field-select {
+  margin-bottom: 10px;
+
+  .field-label {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+}
+
+// ========== 配置面板 ==========
+.config-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+// ========== 工时表单 ==========
+.worklog-form {
+  border-top: 1px solid @border-light;
+  padding-top: 12px;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: @gap;
+}
+
+.form-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+// 描述标签与"同步任务名称"勾选同行，两端对齐
+.form-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+// ========== 单个任务回显 ==========
+.selected-task {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  background: #f5f6f7;
+  border-radius: @radius;
+}
+
+// ========== 记录勾选列表 ==========
+.record-list {
+  margin-bottom: 12px;
+}
+
+.record-select-all {
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.record-scroll {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid @border-light;
+  border-radius: @radius;
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  // antd Checkbox 默认带左 margin，列表里逐项排列时需清掉
+  .record-item {
+    margin-left: 0;
+    width: 100%;
+
+    // 让 label 子内容区撑满，标题可省略、标签不被挤压
+    > span:last-child {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      min-width: 0;
+    }
+  }
+}
+
+.record-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
