@@ -57,7 +57,8 @@ jobs:
 
       - name: 递增 patch 版本号
         # [skip ci] 提交信息避免再次触发本工作流，形成死循环
-        run: npm version patch -m "chore: 版本号递增至 %s [skip ci]"
+        run: |
+          npm version patch -m "chore: 版本号递增至 %s [skip ci]"
 
       - name: 推送版本提交与标签
         run: git push --follow-tags origin main
