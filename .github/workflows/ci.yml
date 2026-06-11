@@ -32,7 +32,7 @@ jobs:
       - name: 类型检查 + 构建
         run: npm run build
 
-  # —— 版本递增：仅 push 到 main 且校验通过后执行 ——
+  # —— 版本递增 + 发布 npm：仅 push 到 main 且校验通过后执行 ——
   bump-version:
     needs: verify
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -49,6 +49,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          # 配置发布目标源，配合 NODE_AUTH_TOKEN 完成鉴权
+          registry-url: https://registry.npmjs.org
+
+      - name: 安装依赖
+        run: npm ci
 
       - name: 配置 Git 身份
         run: |
@@ -59,6 +65,12 @@ jobs:
         # [skip ci] 提交信息避免再次触发本工作流，形成死循环
         run: |
           npm version patch -m "chore: 版本号递增至 %s [skip ci]"
+
+      - name: 发布到 npm
+        # npm publish 会触发 prepublishOnly 钩子自动构建 dist
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
       - name: 推送版本提交与标签
         run: git push --follow-tags origin main
