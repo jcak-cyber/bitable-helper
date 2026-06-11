@@ -1,6 +1,6 @@
 {
   "name": "bitable-helper",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "飞书多维表格插件：整行复制 + 工时填写",
   "bin": {
