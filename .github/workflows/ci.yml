@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 同一分支的并发运行只保留最新，避免版本号递增任务相互冲突
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # —— 流程校验：lint + 类型检查 + 构建 ——
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: ESLint 代码规范检查
+        run: npm run lint
+
+      - name: 类型检查 + 构建
+        run: npm run build
+
+  # —— 版本递增：仅 push 到 main 且校验通过后执行 ——
+  bump-version:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 拉取完整历史并使用可推送的 token
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 配置 Git 身份
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 递增 patch 版本号
+        # [skip ci] 提交信息避免再次触发本工作流，形成死循环
+        run: npm version patch -m "chore: 版本号递增至 %s [skip ci]"
+
+      - name: 推送版本提交与标签
+        run: git push --follow-tags origin main
