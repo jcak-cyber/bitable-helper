@@ -3,42 +3,47 @@
   "version": "0.1.1",
   "type": "module",
   "description": "飞书多维表格插件：整行复制 + 工时填写",
+  "license": "MIT",
+  "author": "zzy",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jcak-cyber/bitable-helper.git"
+  },
   "bin": {
     "bitable-helper": "bin/cli.mjs"
   },
   "files": [
     "bin",
-    "src",
-    "index.html",
-    "vite.config.ts",
-    "tsconfig.json"
+    "dist"
   ],
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "node bin/cli.mjs"
+    "start": "node bin/cli.mjs",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@lark-base-open/js-sdk": "0.3.6",
-    "@vitejs/plugin-react": "4.3.4",
-    "antd": "^6.4.3",
-    "dayjs": "^1.11.21",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "vite": "5.4.11"
+    "sirv-cli": "^3.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@lark-base-open/js-sdk": "0.3.6",
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "antd": "^6.4.3",
+    "dayjs": "^1.11.21",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",
     "globals": "^15.14.0",
     "less": "^4.6.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
     "typescript": "5.6.3",
-    "typescript-eslint": "^8.18.0"
+    "typescript-eslint": "^8.18.0",
+    "vite": "5.4.11"
   }
 }
