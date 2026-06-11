@@ -27,6 +27,25 @@
 | 平台 SDK | [@lark-base-open/js-sdk](https://www.npmjs.com/package/@lark-base-open/js-sdk) |
 | 样式 | Less |
 
+## 安装使用（命令行）
+
+本插件已发布到 npm，可全局安装后通过命令行启动一个本地服务，托管已构建好的插件产物：
+
+```bash
+# 全局安装
+npm install -g bitable-helper
+
+# 启动服务（默认 http://localhost:5173）
+bitable-helper
+
+# 指定端口
+bitable-helper 8080
+```
+
+启动后，将控制台输出的地址（如 `http://localhost:5173`）填入飞书多维表格的「自定义插件」入口即可加载。
+
+> 该命令通过 [sirv](https://www.npmjs.com/package/sirv-cli) 托管包内预构建的 `dist` 产物，已启用 CORS 与 SPA 回退，开箱即用，无需本地构建。
+
 ## 快速开始
 
 ### 环境要求
@@ -45,6 +64,9 @@ npm run dev
 
 # 生产构建（先做 tsc 类型检查，再 vite 打包到 dist/）
 npm run build
+
+# 代码规范检查（ESLint）
+npm run lint
 
 # 本地预览构建产物
 npm run preview
@@ -75,6 +97,8 @@ npm run preview
 ## 项目结构
 
 ```
+bin/
+└── cli.mjs                  # CLI 入口：用 sirv 托管 dist 产物，供全局安装后命令行启动
 src/
 ├── App.tsx                  # 主组件：模式切换、配置态调度、提交编排
 ├── main.tsx                 # 入口：挂载 React + antd ConfigProvider（中文 + 飞书蓝主题）
@@ -98,6 +122,20 @@ src/
 - **关联追加写入**：创建工时记录后，读取主表关联字段的现有值，将新记录 id **追加**进去再写回，保留任务已有的工时关联，不做覆盖（见 `appendLink`）。
 - **表切换刷新**：通过 `onSelectionChange` 比对 `tableId` 判断是否真正切换了表，仅在换表时重载，避免单纯切换选中行导致频繁刷新（见 [src/hooks/useTableData.ts](src/hooks/useTableData.ts)）。
 
+## 持续集成与发布
+
+仓库配置了 GitHub Actions 工作流（见 [.github/workflows/ci.yml](.github/workflows/ci.yml)），push 到 `main` 分支时自动执行：
+
+```
+校验(lint + tsc + build) → 递增 patch 版本号 → 构建 → 发布到 npm → 推送版本提交与 tag
+```
+
+- **校验**：ESLint、类型检查与构建，任一失败则中断，不会发布
+- **版本递增**：自动执行 `npm version patch`，提交信息带 `[skip ci]` 避免再次触发工作流形成死循环
+- **自动发布**：通过仓库 Secret `NPM_TOKEN`（需具备 bypass 2FA 权限的 npm token）鉴权发布
+
+> 因 CI 每次都会回推一个版本提交，本地下次 push 前需先 `git pull`，否则推送会被拒绝。
+
 ## License
 
-私有项目，未声明开源许可。
+[MIT](https://opensource.org/licenses/MIT)
