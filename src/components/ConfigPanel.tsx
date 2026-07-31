@@ -90,6 +90,14 @@ export function ConfigPanel({
             emptyHint="工时表没有文本字段（可不填）"
           />
           <FieldSelect
+            label="任务表 · 计划开始日期"
+            fields={mainDateFields}
+            value={draft.planStartDateFieldId}
+            onChange={(id) => onChange({ planStartDateFieldId: id })}
+            allowEmpty
+            emptyHint="任务表没有日期字段（可不填）"
+          />
+          <FieldSelect
             label="任务表 · 计划结束日期"
             fields={mainDateFields}
             value={draft.planEndDateFieldId}
@@ -97,6 +105,9 @@ export function ConfigPanel({
             allowEmpty
             emptyHint="任务表没有日期字段（可不填）"
           />
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0 }}>
+            配置开始与结束日期后，同步计划日期将按跨度逐日生成多条工时（如跨 3 天则生成 3 条）。
+          </Typography.Paragraph>
         </>
       )}
 

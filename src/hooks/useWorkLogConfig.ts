@@ -10,6 +10,7 @@ export const EMPTY_CONFIG: WorkLogConfig = {
   hoursFieldId: '',
   dateFieldId: '',
   descFieldId: '',
+  planStartDateFieldId: '',
   planEndDateFieldId: '',
 };
 
@@ -51,7 +52,14 @@ export function useWorkLogConfig(mainTableId: string | undefined) {
 function readConfig(key: string): WorkLogConfig | null {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as WorkLogConfig) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<WorkLogConfig>;
+    // 兼容旧配置：补齐后续新增字段
+    return {
+      ...EMPTY_CONFIG,
+      ...parsed,
+      planStartDateFieldId: parsed.planStartDateFieldId ?? '',
+    };
   } catch {
     return null;
   }

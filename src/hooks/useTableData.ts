@@ -6,6 +6,7 @@ import {
   getFieldsByType,
   getTableById,
   getVisibleRecords,
+  isTaskManagementTable,
 } from '../services/bitable';
 import type { FieldOption, RecordRow } from '../types';
 
@@ -15,6 +16,10 @@ export type LinkField = FieldOption;
 interface TableData {
   /** 主表（任务表） */
   mainTable: ITable | null;
+  /** 当前激活表名 */
+  tableName: string;
+  /** 当前是否为任务管理表（表名或字段结构判定） */
+  isTaskTable: boolean;
   /** 主表的双向关联字段列表 */
   linkFields: LinkField[];
   /** 主表的日期字段（计划结束日期候选） */
@@ -32,50 +37,85 @@ interface TableData {
  */
 export function useTableData(linkFieldId?: string): TableData {
   const [mainTable, setMainTable] = useState<ITable | null>(null);
+  const [tableName, setTableName] = useState('');
+  const [isTaskTable, setIsTaskTable] = useState(false);
   const [linkFields, setLinkFields] = useState<LinkField[]>([]);
   const [mainDateFields, setMainDateFields] = useState<FieldOption[]>([]);
   const [records, setRecords] = useState<RecordRow[]>([]);
   const [loading, setLoading] = useState(true);
-  // 记住当前表 id，用于在 selectionChange 时判断是否真的换了表
   const currentTableIdRef = useRef<string | null>(null);
+  /** 防止快速切表时旧请求回写覆盖新状态 */
+  const loadSeqRef = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     try {
       const t = await getActiveTable();
-      const [links, dates, rows] = await Promise.all([
+      const [name, isTask, links, dates, rows] = await Promise.all([
+        t.getName(),
+        isTaskManagementTable(t),
         getLinkFields(t),
         getFieldsByType(t, [FieldType.DateTime]),
         getVisibleRecords(t, linkFieldId),
       ]);
+      // 过期请求直接丢弃
+      if (seq !== loadSeqRef.current) return;
+
       currentTableIdRef.current = t.id;
       setMainTable(t);
+      setTableName(name);
+      setIsTaskTable(isTask);
       setLinkFields(links);
       setMainDateFields(dates);
       setRecords(rows);
     } catch (e) {
+      if (seq !== loadSeqRef.current) return;
       console.error('[useTableData] 加载失败', e);
+      setTableName('');
+      setIsTaskTable(false);
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, [linkFieldId]);
 
   useEffect(() => {
     load();
-    // 仅在「切换表格」时重载；单纯切换选中行不触发，避免插件频繁刷新。
-    // onSelectionChange 在选中行变化时也会触发，故需比对 tableId。
-    const off = bitable.base.onSelectionChange((event) => {
-      const tableId = event?.data?.tableId;
-      if (tableId && tableId !== currentTableIdRef.current) {
-        load();
-      }
+    // 以 getActiveTable 为准检测换表（不依赖 event.data.tableId，避免漏刷新）
+    const off = bitable.base.onSelectionChange(() => {
+      void (async () => {
+        try {
+          const t = await getActiveTable();
+          if (t.id !== currentTableIdRef.current) {
+            await load();
+            return;
+          }
+          // 同表也可能需校正判定（防止竞态后状态错误）
+          const [name, isTask] = await Promise.all([t.getName(), isTaskManagementTable(t)]);
+          setTableName(name);
+          setIsTaskTable(isTask);
+        } catch (e) {
+          console.error('[useTableData] 选区变更处理失败', e);
+          // 兜底强制重载
+          void load();
+        }
+      })();
     });
     return () => {
       off();
     };
   }, [load]);
 
-  return { mainTable, linkFields, mainDateFields, records, loading, refresh: load };
+  return {
+    mainTable,
+    tableName,
+    isTaskTable,
+    linkFields,
+    mainDateFields,
+    records,
+    loading,
+    refresh: load,
+  };
 }
 
 interface WorkTableFields {

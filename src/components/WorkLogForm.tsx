@@ -33,7 +33,7 @@ export function WorkLogForm({ hasDateField, canSync, disabled, submitText, onSub
   const [desc, setDesc] = useState('');
   // 是否用任务名称作为描述（勾选后禁用并忽略手填描述）
   const [syncTaskName, setSyncTaskName] = useState(false);
-  // 日期模式：sync = 同步计划结束日期；manual = 手选
+  // 日期模式：sync = 按计划跨度逐日生成；manual = 手选单日
   const [dateMode, setDateMode] = useState<'sync' | 'manual'>(canSync ? 'sync' : 'manual');
   const [manualDate, setManualDate] = useState<Dayjs | null>(null);
 
@@ -60,7 +60,14 @@ export function WorkLogForm({ hasDateField, canSync, disabled, submitText, onSub
   };
 
   return (
-    <div className="worklog-form">
+    <section className={`worklog-form ${disabled ? 'is-disabled' : ''}`}>
+      <div className="worklog-form-header">
+        <span className="panel-toolbar-label">工时录入</span>
+        <span className="worklog-form-header-hint">
+          {disabled ? '选中任务后可填写' : '填写完成后点击创建'}
+        </span>
+      </div>
+
       {/* 时长 */}
       <div className="form-row">
         <span className="form-label">
@@ -104,8 +111,8 @@ export function WorkLogForm({ hasDateField, canSync, disabled, submitText, onSub
             onChange={(e) => setDateMode(e.target.value)}
           >
             <Space direction="vertical" size={4}>
-              {canSync && <Radio value="sync">同步计划结束日期</Radio>}
-              <Radio value="manual">指定日期</Radio>
+              {canSync && <Radio value="sync">同步计划日期（按跨度逐日）</Radio>}
+              <Radio value="manual">指定日期（仅 1 条）</Radio>
             </Space>
           </Radio.Group>
           {dateMode === 'manual' && (
@@ -143,6 +150,6 @@ export function WorkLogForm({ hasDateField, canSync, disabled, submitText, onSub
       <Button type="primary" block disabled={!canSubmit} onClick={submit}>
         {submitText}
       </Button>
-    </div>
+    </section>
   );
 }

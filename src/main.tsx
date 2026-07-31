@@ -11,7 +11,18 @@ dayjs.locale('zh-cn');
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     {/* 主题色对齐飞书蓝；locale 让 DatePicker 等组件显示中文 */}
-    <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: '#3370ff' } }}>
+    <ConfigProvider
+      locale={zhCN}
+      theme={{
+        token: {
+          colorPrimary: '#3370ff',
+          borderRadius: 8,
+          colorBgContainer: '#ffffff',
+          fontFamily:
+            "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
+        },
+      }}
+    >
       <App />
     </ConfigProvider>
   </React.StrictMode>

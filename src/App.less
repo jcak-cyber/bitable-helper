@@ -1,8 +1,17 @@
 // ========== 设计变量 ==========
-@border-light: #f0f1f2;
-@text-placeholder: #8f959e;
-@radius: 6px;
+@feishu-blue: #3370ff;
+@feishu-blue-soft: #e8f0ff;
+@feishu-blue-tint: #f3f7ff;
+@ink: #1f2329;
+@ink-secondary: #646a73;
+@ink-muted: #8f959e;
+@surface: #ffffff;
+@surface-muted: #f5f6f7;
+@border-light: #e8eaed;
+@radius: 8px;
+@radius-sm: 6px;
 @gap: 6px;
+@shadow-soft: 0 1px 2px rgba(31, 35, 41, 0.04), 0 4px 12px rgba(31, 35, 41, 0.04);
 
 // ========== 全局 ==========
 * {
@@ -11,28 +20,513 @@
   padding: 0;
 }
 
+html,
+body,
+#root {
+  height: auto;
+  min-height: 0;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  color: @ink;
+  background: linear-gradient(165deg, #f7f9fc 0%, #eef3fb 48%, #f5f7fa 100%);
+  background-attachment: fixed;
 }
 
 .app {
-  padding: 16px;
+  padding: 14px 14px 18px;
   margin: 0 auto;
+}
 
-  &.loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 200px;
+// ========== 品牌头 ==========
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: @radius;
+  background: linear-gradient(120deg, rgba(51, 112, 255, 0.08), rgba(255, 255, 255, 0.9));
+  border: 1px solid rgba(51, 112, 255, 0.12);
+}
+
+.app-brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  background:
+    linear-gradient(145deg, #5b8fff 0%, @feishu-blue 55%, #245bdb 100%);
+  box-shadow: 0 4px 10px rgba(51, 112, 255, 0.28);
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 8px 7px 8px 14px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.9);
   }
 }
 
-.app-header {
+.app-brand-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.app-brand-title {
+  margin: 0 !important;
+  font-size: 16px !important;
+  line-height: 1.3 !important;
+  color: @ink !important;
+}
+
+.app-brand-sub {
+  font-size: 12px;
+  color: @ink-secondary !important;
+}
+
+// ========== Tabs ==========
+.app-tabs {
+  .ant-tabs-nav {
+    margin-bottom: 12px;
+    &::before {
+      border-bottom-color: @border-light;
+    }
+  }
+
+  .ant-tabs-tab {
+    padding: 8px 4px;
+    font-size: 13px;
+  }
+
+  .ant-tabs-ink-bar {
+    height: 3px;
+    border-radius: 3px 3px 0 0;
+  }
+
+}
+
+.panel-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+}
+
+// ========== 面板工具条 ==========
+.panel-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  min-width: 0;
+}
+
+.panel-toolbar-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.panel-toolbar-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: @feishu-blue;
+  letter-spacing: 0.04em;
+}
+
+.panel-toolbar-title {
+  display: block;
+  font-size: 13px;
+  max-width: 220px;
+}
+
+.panel-toolbar-hint {
+  font-size: 13px !important;
+  font-weight: 500;
+  color: @ink !important;
+}
+
+.panel-toolbar-action {
+  padding-inline: 0;
+  flex-shrink: 0;
+}
+
+.panel-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: @feishu-blue;
+  background: @feishu-blue-soft;
+  border-radius: 999px;
+  padding: 2px 8px;
+  line-height: 1.5;
+}
+
+// 内层用 Segmented，和外层 Tabs 区分层级
+.task-gen-segmented {
   margin-bottom: 12px;
+
+  &.ant-segmented {
+    background: rgba(31, 35, 41, 0.06);
+    padding: 3px;
+  }
+
+  .ant-segmented-item {
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .ant-segmented-item-selected {
+    color: @feishu-blue;
+    font-weight: 600;
+    box-shadow: 0 1px 4px rgba(51, 112, 255, 0.16);
+  }
+}
+
+.task-gen-seg-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.task-gen-pane {
+  min-width: 0;
+}
+
+.subtab-badge {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: @feishu-blue-soft;
+  color: @feishu-blue;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+.current-view-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.current-view-pane,
+.staged-tasks-pane {
+  min-width: 0;
+}
+
+.staged-tasks-table {
+  font-size: 12px;
+
+  .ant-table-thead > tr > th {
+    white-space: nowrap;
+  }
+}
+
+// 避免 hover 位移把按钮视觉上“挤出”卡片
+.schedule-item:hover {
+  transform: none;
+}
+
+.inline-hint {
+  margin-bottom: 0;
+  padding: 9px 11px;
+  border-radius: @radius-sm;
+  background: @surface-muted;
+  color: @ink-secondary;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid transparent;
+
+  &.accent {
+    background: @feishu-blue-soft;
+    color: @ink;
+    border-color: rgba(51, 112, 255, 0.22);
+
+    strong {
+      color: @feishu-blue;
+      font-weight: 700;
+    }
+  }
+
+  &.warn {
+    background: #fff7e8;
+    color: #8a6116;
+    border-color: #ffe3a3;
+  }
+}
+
+// ========== 工时面板 ==========
+.work-hour-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mode-block {
+  padding: 12px;
+  border-radius: @radius;
+  background: linear-gradient(160deg, @feishu-blue-tint 0%, @surface 72%);
+  border: 1px solid rgba(51, 112, 255, 0.18);
+  box-shadow: @shadow-soft;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mode-segmented {
+  margin-bottom: 0;
+
+  &.ant-segmented {
+    background: rgba(31, 35, 41, 0.06);
+    padding: 3px;
+  }
+
+  .ant-segmented-item {
+    font-weight: 500;
+  }
+
+  .ant-segmented-item-selected {
+    color: @feishu-blue;
+    font-weight: 600;
+    box-shadow: 0 1px 4px rgba(51, 112, 255, 0.18);
+  }
+}
+
+.selected-task {
+  margin-bottom: 0;
+  padding: 10px 12px;
+  background: @surface;
+  border: 1px solid rgba(51, 112, 255, 0.28);
+  border-radius: @radius;
+  box-shadow: @shadow-soft;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.selected-task-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: @feishu-blue;
+}
+
+.selected-task-title {
+  display: block;
+  font-size: 13px;
+}
+
+// ========== 任务生成 / 排期列表 ==========
+.task-generate-panel {
+  padding: 0;
+
+  > .panel-empty {
+    margin-top: 8px;
+    padding: 28px 8px;
+    border-radius: @radius;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px dashed @border-light;
+  }
+}
+
+.work-hour-panel.panel-empty {
+  padding: 28px 8px;
+  border-radius: @radius;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px dashed @border-light;
+}
+
+.empty-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: @ink;
+}
+
+.empty-desc {
+  font-size: 12px;
+  color: @ink-secondary;
+  line-height: 1.5;
+}
+
+.empty-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: @ink-muted;
+}
+
+.schedule-list {
+  margin-top: 2px;
+  // 内容少时随内容收缩；过多时内部滚动，避免整页被撑得过高
+  max-height: min(60vh, 360px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 2px;
+}
+
+.schedule-item {
+  padding: 12px;
+  background: @surface;
+  border: 1px solid @border-light;
+  border-radius: @radius;
+  box-shadow: @shadow-soft;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+
+  &:hover {
+    border-color: rgba(51, 112, 255, 0.28);
+    box-shadow: 0 2px 8px rgba(51, 112, 255, 0.08);
+    transform: translateY(-1px);
+  }
+}
+
+.schedule-item-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.schedule-item-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: @ink;
+}
+
+.schedule-effort {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: @feishu-blue;
+  background: @feishu-blue-soft;
+  border-radius: 999px;
+  padding: 1px 8px;
+  line-height: 1.6;
+}
+
+.schedule-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.schedule-type-tag {
+  margin-inline-end: 0 !important;
+  background: #eef0f3 !important;
+  color: @ink-secondary !important;
+  font-size: 12px;
+}
+
+.schedule-date {
+  font-size: 12px;
+  color: @ink-secondary;
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule-item-actions {
+  padding-top: 4px;
+}
+
+.schedule-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px dashed @border-light;
+}
+
+// ========== 生成任务弹窗 ==========
+.generate-task-summary {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: @radius-sm;
+  background: @feishu-blue-tint;
+  border: 1px solid rgba(51, 112, 255, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.generate-task-summary-title {
+  display: block;
+  font-size: 13px;
+}
+
+.generate-task-summary-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: @ink-secondary;
+}
+
+.generate-task-modal {
+  .ant-table {
+    font-size: 12px;
+  }
+}
+
+.generate-task-batch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: @radius-sm;
+  background: @surface-muted;
+  border: 1px solid @border-light;
+}
+
+.generate-task-batch-label {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: @feishu-blue;
+}
+
+.schedule-link-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: @ink-muted;
+  background: @surface-muted;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.schedule-link-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px !important;
+  color: @ink-secondary !important;
 }
 
 // ========== 必填星号 ==========
@@ -40,7 +534,7 @@ body {
   color: #f54a45;
 }
 
-// ========== 字段下拉（容器布局，控件本身由 antd 接管） ==========
+// ========== 字段下拉 ==========
 .field-select {
   margin-bottom: 10px;
 
@@ -52,6 +546,14 @@ body {
 }
 
 // ========== 配置面板 ==========
+.config-panel {
+  padding: 12px;
+  border-radius: @radius;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid @border-light;
+  box-shadow: @shadow-soft;
+}
+
 .config-actions {
   display: flex;
   justify-content: flex-end;
@@ -60,12 +562,36 @@ body {
 
 // ========== 工时表单 ==========
 .worklog-form {
-  border-top: 1px solid @border-light;
-  padding-top: 12px;
-  margin-top: 12px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  border-radius: @radius;
+  background: linear-gradient(160deg, @feishu-blue-tint 0%, @surface 72%);
+  border: 1px solid rgba(51, 112, 255, 0.18);
+  box-shadow: @shadow-soft;
+
+  &.is-disabled {
+    .form-label,
+    .form-label-row,
+    .ant-radio-wrapper,
+    .ant-checkbox-wrapper {
+      color: @ink-secondary;
+    }
+  }
+}
+
+.worklog-form-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 2px;
+}
+
+.worklog-form-header-hint {
+  font-size: 13px;
+  font-weight: 500;
+  color: @ink;
 }
 
 .form-row {
@@ -76,22 +602,14 @@ body {
 
 .form-label {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
+  color: @ink;
 }
 
-// 描述标签与"同步任务名称"勾选同行，两端对齐
 .form-label-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-// ========== 单个任务回显 ==========
-.selected-task {
-  margin-bottom: 12px;
-  padding: 8px 10px;
-  background: #f5f6f7;
-  border-radius: @radius;
 }
 
 // ========== 记录勾选列表 ==========
@@ -100,7 +618,7 @@ body {
 }
 
 .record-select-all {
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   font-weight: 500;
 }
 
@@ -109,17 +627,23 @@ body {
   overflow-y: auto;
   border: 1px solid @border-light;
   border-radius: @radius;
-  padding: 4px 8px;
+  padding: 6px 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  background: @surface;
+  box-shadow: @shadow-soft;
 
-  // antd Checkbox 默认带左 margin，列表里逐项排列时需清掉
   .record-item {
     margin-left: 0;
     width: 100%;
+    padding: 4px 4px;
+    border-radius: @radius-sm;
 
-    // 让 label 子内容区撑满，标题可省略、标签不被挤压
+    &:hover {
+      background: @feishu-blue-tint;
+    }
+
     > span:last-child {
       flex: 1;
       display: flex;
