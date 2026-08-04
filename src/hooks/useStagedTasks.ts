@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { GeneratedTaskPreview, StagedTaskItem } from '../types';
+import { DEFAULT_TASK_ROLE, isTaskRole } from '../constants/taskRole';
+import { buildTaskNameWithRole } from '../services/bitable';
 
 const STORAGE_KEY = 'bitable-helper:staged-tasks';
 /** 清理旧版排期暂存 key，避免残留 */
@@ -19,6 +21,16 @@ function sortTasksByDateDesc(tasks: GeneratedTaskPreview[]): GeneratedTaskPrevie
   return [...tasks].sort((a, b) => (b.dateTs || 0) - (a.dateTs || 0));
 }
 
+function normalizeStagedRow(row: StagedTaskItem, index: number): StagedTaskItem {
+  const role = isTaskRole(row.role) ? row.role : DEFAULT_TASK_ROLE;
+  return {
+    ...row,
+    role,
+    taskName: buildTaskNameWithRole(row.taskName || '', role),
+    stagedAt: row.stagedAt || row.dateTs || Date.now() - index,
+  };
+}
+
 function readStaged(): StagedTaskItem[] {
   try {
     localStorage.removeItem(LEGACY_KEY);
@@ -26,11 +38,7 @@ function readStaged(): StagedTaskItem[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as StagedTaskItem[];
     if (!Array.isArray(parsed)) return [];
-    const normalized = parsed.map((row, index) => ({
-      ...row,
-      stagedAt: row.stagedAt || row.dateTs || Date.now() - index,
-    }));
-    return sortByTimeDesc(normalized);
+    return sortByTimeDesc(parsed.map(normalizeStagedRow));
   } catch {
     return [];
   }
@@ -102,6 +110,10 @@ export function useStagedTasks() {
         prev.map((row) => {
           if (row.stagedId !== stagedId) return row;
           const next = { ...row, ...patch };
+          // 只改岗位时同步任务名前缀
+          if (patch.role && patch.taskName == null) {
+            next.taskName = buildTaskNameWithRole(row.taskName, patch.role);
+          }
           // 计划开始变更时同步排序用时间戳
           if (patch.planStartDate) {
             const ts = Date.parse(patch.planStartDate);

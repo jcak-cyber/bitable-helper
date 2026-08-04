@@ -99,6 +99,8 @@ export interface GeneratedTaskPreview {
   taskName: string;
   /** 任务执行人 */
   executor: string;
+  /** 任务所属岗位 */
+  role: string;
   /** 优先级：P0 / P1 / P2 / P3 */
   priority: 'P0' | 'P1' | 'P2' | 'P3';
   /** 计划开始日期（当日） */
@@ -107,7 +109,7 @@ export interface GeneratedTaskPreview {
   planEndDate: string;
   /** 实际开始日期（默认与计划开始日期一致，可手动改） */
   actualStartDate: string;
-  /** 实际结束日期（默认与计划结束日期一致，可手动改） */
+  /** 实际结束日期（默认空，可手动填） */
   actualEndDate: string;
 }
 

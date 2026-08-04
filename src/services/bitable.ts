@@ -14,10 +14,12 @@ import type {
   RecordRow,
   ScheduleRow,
   GeneratedTaskPreview,
+  StagedTaskItem,
   WorkLogConfig,
   WorkLogInput,
   BatchResult,
 } from '../types';
+import { DEFAULT_TASK_ROLE } from '../constants/taskRole';
 
 /** 任务生成功能依赖的人员排期表名称 */
 export const SCHEDULE_TABLE_NAME = '人员排期';
@@ -339,15 +341,47 @@ function stringifyCell(cell: IOpenCellValue): string {
   return '';
 }
 
-/** 时间戳 / 日期单元格 → YYYY-MM-DD */
+type FieldMetaLite = { id: string; name: string; type: FieldType; isPrimary?: boolean };
+
+/** 时间戳 / 日期单元格 → YYYY-MM-DD（本地日历日） */
 function formatDateCell(cell: IOpenCellValue): string {
   if (typeof cell === 'number' && Number.isFinite(cell)) {
     return dayjs(cell).format('YYYY-MM-DD');
   }
+  if (cell && typeof cell === 'object' && 'value' in cell) {
+    const v = (cell as { value?: unknown }).value;
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      return dayjs(v).format('YYYY-MM-DD');
+    }
+  }
   const text = stringifyCell(cell);
   if (!text) return '';
-  const parsed = dayjs(text);
-  return parsed.isValid() ? parsed.format('YYYY-MM-DD') : text;
+  // 兼容 2026/08/07、2026-08-07
+  const normalized = text.trim().replace(/\//g, '-');
+  const parsed = dayjs(normalized);
+  return parsed.isValid() ? parsed.format('YYYY-MM-DD') : '';
+}
+
+/**
+ * 按字段名查找 meta（精确优先，其次包含）。
+ * 可限制字段类型，避免误匹配到同名片段的非目标列。
+ */
+function findFieldMeta(
+  metaList: FieldMetaLite[],
+  names: string[],
+  types?: FieldType[]
+): FieldMetaLite | null {
+  const list =
+    types && types.length > 0 ? metaList.filter((m) => types.includes(m.type)) : metaList;
+  for (const name of names) {
+    const exact = list.find((m) => m.name === name);
+    if (exact) return exact;
+  }
+  for (const name of names) {
+    const partial = list.find((m) => m.name.includes(name));
+    if (partial) return partial;
+  }
+  return null;
 }
 
 /** 投入字段：小数比例转百分比，已是百分数则原样展示 */
@@ -467,11 +501,55 @@ export async function getScheduleRecords(
   });
 }
 
+export interface BuildTaskPreviewOptions {
+  /** 是否在周六、周日也生成任务；默认 true */
+  includeWeekend?: boolean;
+}
+
+/**
+ * 排期名称 → 生成任务名称正文（不含岗位前缀）。
+ * 例：`SCH-0066 | 华夏乘黄 | SaaS | 标准交付 + 定制化开发 | 张泽宇 | 08/01-09/03`
+ * → 去掉首段编号与末两段（执行人、日期），去掉 `|` 后拼接：
+ * `华夏乘黄SaaS标准交付 + 定制化开发`
+ */
+export function formatGeneratedTaskName(raw: string): string {
+  const parts = raw
+    .split(/[|｜]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return raw.trim();
+  if (parts.length <= 3) {
+    // 结构不足时仅去掉分隔符拼接
+    return parts.join('');
+  }
+  return parts.slice(1, -2).join('');
+}
+
+/** 去掉已有的【岗位】前缀，便于更换岗位时重拼 */
+export function stripTaskRolePrefix(taskName: string): string {
+  return taskName.replace(/^【[^】]*】/, '').trim();
+}
+
+/**
+ * 最终任务名称：【所属岗位】+ 名称正文
+ * 例：【前端】华夏乘黄SaaS标准交付 + 定制化开发
+ */
+export function buildTaskNameWithRole(baseOrFullName: string, role: string): string {
+  const base = stripTaskRolePrefix(baseOrFullName);
+  const r = (role || DEFAULT_TASK_ROLE).trim() || DEFAULT_TASK_ROLE;
+  return `【${r}】${base}`;
+}
+
 /**
  * 按排期计划起止日展开待生成任务预览列表（跨 N 天 → N 条）。
  * 单日任务：计划开始/结束均为当天。
+ * includeWeekend=false 时跳过周六、周日。
  */
-export function buildGeneratedTaskPreviews(schedule: ScheduleRow): GeneratedTaskPreview[] {
+export function buildGeneratedTaskPreviews(
+  schedule: ScheduleRow,
+  options?: BuildTaskPreviewOptions
+): GeneratedTaskPreview[] {
+  const includeWeekend = options?.includeWeekend ?? true;
   let startTs = schedule.startTs;
   let endTs = schedule.endTs;
 
@@ -486,10 +564,22 @@ export function buildGeneratedTaskPreviews(schedule: ScheduleRow): GeneratedTask
   }
 
   if (startTs == null && endTs == null) return [];
-  const days =
+  let days =
     startTs != null && endTs != null
       ? expandDayTimestamps(startTs, endTs)
       : [startTs ?? endTs!];
+
+  if (!includeWeekend) {
+    // dayjs: 0=周日, 6=周六
+    days = days.filter((ts) => {
+      const dow = dayjs(ts).day();
+      return dow !== 0 && dow !== 6;
+    });
+  }
+
+  const baseName = formatGeneratedTaskName(schedule.name);
+  const role = DEFAULT_TASK_ROLE;
+  const taskName = buildTaskNameWithRole(baseName, role);
 
   return days.map((dateTs, index) => {
     const date = dayjs(dateTs).format('YYYY-MM-DD');
@@ -497,13 +587,480 @@ export function buildGeneratedTaskPreviews(schedule: ScheduleRow): GeneratedTask
       dayIndex: index + 1,
       date,
       dateTs,
-      taskName: schedule.name,
+      taskName,
       executor: schedule.executor,
+      role,
       priority: 'P0',
       planStartDate: date,
       planEndDate: date,
       actualStartDate: date,
-      actualEndDate: date,
+      actualEndDate: '',
     };
   });
+}
+
+function toDayTs(dateStr: string): number | null {
+  if (!dateStr) return null;
+  const d = dayjs(dateStr);
+  return d.isValid() ? d.startOf('day').valueOf() : null;
+}
+
+type SelectOptionLite = { id: string; name: string };
+
+type SelectFieldLike = {
+  createCell: (val: unknown) => Promise<{ getValue: () => Promise<IOpenCellValue> }>;
+  getOptions?: () => Promise<SelectOptionLite[]>;
+  addOption?: (name: string) => Promise<unknown>;
+  setValue?: (recordOrId: string, val: unknown) => Promise<boolean>;
+};
+
+/** 在选项列表中匹配 P0/P1…（精确 / 忽略大小写 / 名称包含） */
+function matchSelectOption(
+  options: SelectOptionLite[],
+  text: string
+): SelectOptionLite | undefined {
+  const raw = text.trim();
+  if (!raw) return undefined;
+  const upper = raw.toUpperCase();
+  return (
+    options.find((o) => o.name === raw) ||
+    options.find((o) => o.name.toUpperCase() === upper) ||
+    options.find((o) => {
+      const n = o.name.toUpperCase();
+      return n.startsWith(upper) || n.includes(upper) || upper.includes(n);
+    })
+  );
+}
+
+/**
+ * 解析单选/多选可写入值：先 getOptions 匹配，没有则 addOption，再回退 createCell。
+ * 绝不写入 id 为空的伪选项（飞书会静默丢弃，表现为优先级空白）。
+ */
+async function resolveSelectCellValue(
+  field: SelectFieldLike,
+  raw: string,
+  multi: boolean
+): Promise<IOpenCellValue | null> {
+  const text = String(raw).trim();
+  if (!text) return null;
+
+  let options: SelectOptionLite[] = [];
+  try {
+    options = (await field.getOptions?.()) ?? [];
+  } catch {
+    options = [];
+  }
+
+  let opt = matchSelectOption(options, text);
+  if (!opt && typeof field.addOption === 'function') {
+    try {
+      await field.addOption(text);
+      options = (await field.getOptions?.()) ?? [];
+      opt = matchSelectOption(options, text);
+    } catch (e) {
+      console.warn('[resolveSelectCellValue] addOption 失败', text, e);
+    }
+  }
+
+  if (opt?.id) {
+    const cell = { id: opt.id, text: opt.name };
+    return multi ? [cell] : cell;
+  }
+
+  try {
+    const created = await field.createCell(text);
+    const val = await created.getValue();
+    if (val == null) return null;
+    if (multi) {
+      if (Array.isArray(val)) return val.length > 0 ? (val as IOpenCellValue) : null;
+      if (typeof val === 'object' && val && 'id' in val && (val as { id: string }).id) {
+        return [val] as unknown as IOpenCellValue;
+      }
+      return null;
+    }
+    if (typeof val === 'object' && val && 'id' in val && (val as { id: string }).id) {
+      return val as IOpenCellValue;
+    }
+    return null;
+  } catch (e) {
+    console.warn('[resolveSelectCellValue] createCell 失败', text, e);
+    return null;
+  }
+}
+
+/**
+ * 用字段 createCell 生成可写入的单元格值。
+ * User 字段无法仅凭姓名可靠写入，返回 null 由调用方跳过。
+ */
+async function buildCellValue(
+  table: ITable,
+  meta: FieldMetaLite,
+  raw: string | number
+): Promise<IOpenCellValue | null> {
+  const field = await table.getFieldById(meta.id);
+  try {
+    if (meta.type === FieldType.Text || meta.type === FieldType.Barcode) {
+      const cell = await field.createCell(String(raw));
+      return (await cell.getValue()) as IOpenCellValue;
+    }
+    if (meta.type === FieldType.DateTime) {
+      const ts = typeof raw === 'number' ? raw : toDayTs(String(raw));
+      if (ts == null) return null;
+      const cell = await field.createCell(ts);
+      return (await cell.getValue()) as IOpenCellValue;
+    }
+    if (meta.type === FieldType.SingleSelect || meta.type === FieldType.MultiSelect) {
+      return resolveSelectCellValue(
+        field as unknown as SelectFieldLike,
+        String(raw),
+        meta.type === FieldType.MultiSelect
+      );
+    }
+    if (meta.type === FieldType.Number) {
+      const n = typeof raw === 'number' ? raw : Number(raw);
+      if (!Number.isFinite(n)) return null;
+      const cell = await field.createCell(n);
+      return (await cell.getValue()) as IOpenCellValue;
+    }
+  } catch (e) {
+    console.warn('[buildCellValue] 字段写入值构造失败', meta.name, meta.type, e);
+    if (meta.type === FieldType.Text && typeof raw === 'string' && raw) {
+      return [{ type: IOpenSegmentType.Text, text: raw }];
+    }
+    if (meta.type === FieldType.DateTime) {
+      const ts = typeof raw === 'number' ? raw : toDayTs(String(raw));
+      if (ts == null) return null;
+      return ts;
+    }
+  }
+  return null;
+}
+
+/**
+ * 从当前视图已有记录中按姓名匹配人员字段值（仅有姓名字符串时的折中方案）。
+ */
+async function resolveUserValueByName(
+  table: ITable,
+  fieldId: string,
+  name: string
+): Promise<IOpenCellValue | null> {
+  const target = name.trim();
+  if (!target) return null;
+  try {
+    const view = await table.getActiveView();
+    const recordIds = await view.getVisibleRecordIdList();
+    for (const recordId of recordIds) {
+      if (!recordId) continue;
+      const cell = await table.getCellValue(fieldId, recordId);
+      if (!Array.isArray(cell) || cell.length === 0) continue;
+      const hit = cell.find((u) => {
+        if (!u || typeof u !== 'object') return false;
+        const uname = String((u as { name?: string }).name ?? '');
+        return uname === target || uname.includes(target) || target.includes(uname);
+      });
+      if (hit) return [hit] as IOpenCellValue;
+    }
+  } catch (e) {
+    console.warn('[resolveUserValueByName] 匹配人员失败', e);
+  }
+  return null;
+}
+
+/** 冲突匹配键：仅计划开始日 YYYY-MM-DD */
+function planStartConflictKey(planStartDate: string): string {
+  return planStartDate.trim();
+}
+
+interface TaskFieldCtx {
+  table: ITable;
+  nameMeta: FieldMetaLite;
+  executorMeta: FieldMetaLite | null;
+  priorityMeta: FieldMetaLite | null;
+  roleMeta: FieldMetaLite | null;
+  planStartMeta: FieldMetaLite | null;
+  planEndMeta: FieldMetaLite | null;
+  actualStartMeta: FieldMetaLite | null;
+  actualEndMeta: FieldMetaLite | null;
+  userCache: Map<string, IOpenCellValue | null>;
+  /** 优先级选项解析缓存：P0 → 单元格值 */
+  priorityValueCache: Map<string, IOpenCellValue | null>;
+  /** 所属岗位选项解析缓存 */
+  roleValueCache: Map<string, IOpenCellValue | null>;
+}
+
+async function resolveTaskFieldCtx(table: ITable): Promise<TaskFieldCtx | { error: string }> {
+  const metaList = (await table.getFieldMetaList()) as FieldMetaLite[];
+  const nameMeta =
+    findFieldMeta(metaList, ['任务名称', '任务名']) ??
+    metaList.find((m) => m.isPrimary) ??
+    null;
+  if (!nameMeta) return { error: '未找到「任务名称」字段，无法插入' };
+  const dateTypes = [FieldType.DateTime];
+  const selectTypes = [FieldType.SingleSelect, FieldType.MultiSelect];
+  return {
+    table,
+    nameMeta,
+    executorMeta: findFieldMeta(metaList, ['任务执行人', '执行人', '负责人', '人员']),
+    priorityMeta:
+      findFieldMeta(metaList, ['优先级'], selectTypes) ??
+      findFieldMeta(metaList, ['优先级']),
+    roleMeta:
+      findFieldMeta(metaList, ['任务所属岗位', '所属岗位'], selectTypes) ??
+      findFieldMeta(metaList, ['任务所属岗位', '所属岗位']),
+    planStartMeta: findFieldMeta(metaList, ['计划开始日期', '计划开始日', '计划开始'], dateTypes),
+    planEndMeta: findFieldMeta(metaList, ['计划结束日期', '计划结束日', '计划结束'], dateTypes),
+    actualStartMeta: findFieldMeta(metaList, ['实际开始日期', '实际开始日', '实际开始'], dateTypes),
+    actualEndMeta: findFieldMeta(metaList, ['实际结束日期', '实际结束日', '实际结束'], dateTypes),
+    userCache: new Map(),
+    priorityValueCache: new Map(),
+    roleValueCache: new Map(),
+  };
+}
+
+async function buildTaskFields(
+  ctx: TaskFieldCtx,
+  task: StagedTaskItem
+): Promise<Record<string, IOpenCellValue>> {
+  const {
+    table,
+    nameMeta,
+    executorMeta,
+    priorityMeta,
+    roleMeta,
+    planStartMeta,
+    planEndMeta,
+    actualStartMeta,
+    actualEndMeta,
+    userCache,
+    priorityValueCache,
+    roleValueCache,
+  } = ctx;
+  const fields: Record<string, IOpenCellValue> = {};
+
+  const nameVal = await buildCellValue(table, nameMeta, task.taskName || '(未命名)');
+  if (nameVal != null) fields[nameMeta.id] = nameVal;
+
+  if (priorityMeta && task.priority) {
+    let v = priorityValueCache.get(task.priority);
+    if (v === undefined) {
+      v = await buildCellValue(table, priorityMeta, task.priority);
+      priorityValueCache.set(task.priority, v);
+    }
+    if (v != null) fields[priorityMeta.id] = v;
+  }
+
+  const role = task.role || DEFAULT_TASK_ROLE;
+  if (roleMeta && role) {
+    let v = roleValueCache.get(role);
+    if (v === undefined) {
+      v = await buildCellValue(table, roleMeta, role);
+      roleValueCache.set(role, v);
+    }
+    if (v != null) fields[roleMeta.id] = v;
+  }
+
+  if (planStartMeta && task.planStartDate) {
+    const v = await buildCellValue(table, planStartMeta, task.planStartDate);
+    if (v != null) fields[planStartMeta.id] = v;
+  }
+  if (planEndMeta && task.planEndDate) {
+    const v = await buildCellValue(table, planEndMeta, task.planEndDate);
+    if (v != null) fields[planEndMeta.id] = v;
+  }
+  if (actualStartMeta && task.actualStartDate) {
+    const v = await buildCellValue(table, actualStartMeta, task.actualStartDate);
+    if (v != null) fields[actualStartMeta.id] = v;
+  }
+  if (actualEndMeta && task.actualEndDate) {
+    const v = await buildCellValue(table, actualEndMeta, task.actualEndDate);
+    if (v != null) fields[actualEndMeta.id] = v;
+  }
+
+  if (executorMeta && task.executor) {
+    if (executorMeta.type === FieldType.User) {
+      let cached = userCache.get(task.executor);
+      if (cached === undefined) {
+        cached = await resolveUserValueByName(table, executorMeta.id, task.executor);
+        userCache.set(task.executor, cached);
+      }
+      if (cached != null) fields[executorMeta.id] = cached;
+    } else {
+      const v = await buildCellValue(table, executorMeta, task.executor);
+      if (v != null) fields[executorMeta.id] = v;
+    }
+  }
+
+  return fields;
+}
+
+/** 建记录后再写一次单选，避免 addRecord 对单选静默丢弃 */
+async function applySelectAfterWrite(
+  ctx: TaskFieldCtx,
+  recordId: string,
+  meta: FieldMetaLite | null,
+  raw: string,
+  cache: Map<string, IOpenCellValue | null>
+): Promise<void> {
+  if (!meta || !raw) return;
+  const field = (await ctx.table.getFieldById(meta.id)) as unknown as SelectFieldLike;
+  if (typeof field.setValue !== 'function') return;
+
+  let cellVal = cache.get(raw);
+  if (cellVal === undefined) {
+    cellVal = await buildCellValue(ctx.table, meta, raw);
+    cache.set(raw, cellVal);
+  }
+  if (cellVal == null) return;
+
+  const multi = meta.type === FieldType.MultiSelect;
+  if (multi) {
+    await field.setValue(recordId, Array.isArray(cellVal) ? cellVal : [cellVal]);
+  } else {
+    const single = Array.isArray(cellVal) ? cellVal[0] : cellVal;
+    if (single && typeof single === 'object' && 'id' in single && (single as { id: string }).id) {
+      await field.setValue(recordId, single);
+    } else {
+      await field.setValue(recordId, raw);
+    }
+  }
+}
+
+/**
+ * 扫描任务管理表当前视图的可见记录，找出与暂存任务「同计划开始日」冲突的已有记录。
+ * 仅扫可见行，与侧栏对照的当前视图一致，避免被筛选掉的历史行误判冲突。
+ * @returns stagedId → 已有 recordId
+ */
+export async function findStagedTaskConflicts(
+  table: ITable,
+  tasks: StagedTaskItem[]
+): Promise<Record<string, string>> {
+  const conflicts: Record<string, string> = {};
+  if (tasks.length === 0) return conflicts;
+  if (!(await isTaskManagementTable(table))) return conflicts;
+
+  const ctx = await resolveTaskFieldCtx(table);
+  if ('error' in ctx) return conflicts;
+  if (!ctx.planStartMeta) return conflicts;
+
+  const needed = new Map<string, string[]>();
+  for (const t of tasks) {
+    if (!t.planStartDate) continue;
+    const key = planStartConflictKey(t.planStartDate);
+    const list = needed.get(key) ?? [];
+    list.push(t.stagedId);
+    needed.set(key, list);
+  }
+  if (needed.size === 0) return conflicts;
+
+  // 与用户当前所见视图对齐，不用全表 getRecordIdList
+  const view = await table.getActiveView();
+  const recordIds = (await view.getVisibleRecordIdList()).filter((id): id is string =>
+    Boolean(id)
+  );
+  const { planStartMeta } = ctx;
+
+  const chunkSize = 80;
+  for (let i = 0; i < recordIds.length; i += chunkSize) {
+    const chunk = recordIds.slice(i, i + chunkSize);
+    await Promise.all(
+      chunk.map(async (recordId) => {
+        const startCell = await table.getCellValue(planStartMeta!.id, recordId);
+        const date = formatDateCell(startCell);
+        if (!date) return;
+        const key = planStartConflictKey(date);
+        const stagedIds = needed.get(key);
+        if (!stagedIds) return;
+        for (const stagedId of stagedIds) {
+          if (!conflicts[stagedId]) conflicts[stagedId] = recordId;
+        }
+      })
+    );
+  }
+
+  return conflicts;
+}
+
+export interface InsertStagedTasksOptions {
+  /** stagedId → 已有 recordId；有则覆盖（setRecord），无则新建 */
+  overwriteByStagedId?: Record<string, string>;
+}
+
+/**
+ * 将暂存任务写入当前「任务管理」表。
+ * 按字段名自动匹配：任务名称、执行人、优先级、计划/实际起止日期。
+ * @returns BatchResult，并附带成功插入的 stagedId 列表
+ */
+export async function insertStagedTasks(
+  table: ITable,
+  tasks: StagedTaskItem[],
+  options?: InsertStagedTasksOptions
+): Promise<BatchResult & { successIds: string[] }> {
+  const result: BatchResult & { successIds: string[] } = {
+    success: 0,
+    failed: 0,
+    errors: [],
+    successIds: [],
+  };
+  if (tasks.length === 0) return result;
+
+  const ok = await isTaskManagementTable(table);
+  if (!ok) {
+    result.failed = tasks.length;
+    result.errors.push(`当前表不是「${TASK_TABLE_NAME}」，无法插入`);
+    return result;
+  }
+
+  const ctx = await resolveTaskFieldCtx(table);
+  if ('error' in ctx) {
+    result.failed = tasks.length;
+    result.errors.push(ctx.error);
+    return result;
+  }
+
+  const overwrite = options?.overwriteByStagedId ?? {};
+
+  for (const task of tasks) {
+    try {
+      const fields = await buildTaskFields(ctx, task);
+      const existId = overwrite[task.stagedId];
+      let recordId: string;
+      if (existId) {
+        await table.setRecord(existId, { fields });
+        recordId = existId;
+      } else {
+        recordId = await table.addRecord({ fields });
+      }
+      // 单选二次写入，确保优先级 / 所属岗位真正落库
+      if (task.priority) {
+        try {
+          await applySelectAfterWrite(
+            ctx,
+            recordId,
+            ctx.priorityMeta,
+            task.priority,
+            ctx.priorityValueCache
+          );
+        } catch (pe) {
+          console.warn('[insertStagedTasks] 优先级二次写入失败', task.stagedId, pe);
+        }
+      }
+      const role = task.role || DEFAULT_TASK_ROLE;
+      if (role) {
+        try {
+          await applySelectAfterWrite(ctx, recordId, ctx.roleMeta, role, ctx.roleValueCache);
+        } catch (re) {
+          console.warn('[insertStagedTasks] 所属岗位二次写入失败', task.stagedId, re);
+        }
+      }
+      result.success++;
+      result.successIds.push(task.stagedId);
+    } catch (e) {
+      result.failed++;
+      const label = task.taskName || task.stagedId;
+      result.errors.push(`${label}: ${(e as Error)?.message ?? '未知错误'}`);
+      console.error('[insertStagedTasks] 插入失败', task.stagedId, e);
+    }
+  }
+
+  return result;
 }

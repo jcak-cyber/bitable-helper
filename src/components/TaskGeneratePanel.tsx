@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Key } from 'react';
 import {
   Empty,
@@ -11,13 +11,25 @@ import {
   Space,
   Select,
   DatePicker,
+  Modal,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
+import { bitable } from '@lark-base-open/js-sdk';
 import { useScheduleData } from '../hooks/useScheduleData';
 import { useStagedTasks } from '../hooks/useStagedTasks';
-import { buildGeneratedTaskPreviews, SCHEDULE_TABLE_NAME, toast } from '../services/bitable';
+import {
+  SCHEDULE_TABLE_NAME,
+  TASK_TABLE_NAME,
+  buildTaskNameWithRole,
+  findStagedTaskConflicts,
+  getActiveTable,
+  insertStagedTasks,
+  isTaskManagementTable,
+  toast,
+} from '../services/bitable';
 import { GenerateTaskModal } from './GenerateTaskModal';
+import { DEFAULT_TASK_ROLE, TASK_ROLE_OPTIONS, type TaskRole } from '../constants/taskRole';
 import type { GeneratedTaskPreview, ScheduleRow, StagedTaskItem } from '../types';
 
 const PRIORITY_OPTIONS = [
@@ -31,6 +43,7 @@ type Priority = StagedTaskItem['priority'];
 
 type StagedEditableField =
   | 'priority'
+  | 'role'
   | 'planStartDate'
   | 'planEndDate'
   | 'actualStartDate'
@@ -170,28 +183,120 @@ function CurrentViewPane({
 
 function StagedTasksPane({
   staged,
+  isTaskTable,
   onRemove,
   onRemoveMany,
   onUpdate,
   onClear,
+  onInsert,
 }: {
   staged: StagedTaskItem[];
+  /** 当前是否在「任务管理」表（才显示插入） */
+  isTaskTable: boolean;
   onRemove: (stagedId: string) => void;
   onRemoveMany: (stagedIds: string[]) => void;
   onUpdate: (stagedId: string, patch: Partial<StagedTaskItem>) => void;
   onClear: () => void;
+  onInsert: (
+    tasks: StagedTaskItem[],
+    options?: { overwriteByStagedId?: Record<string, string> }
+  ) => Promise<void>;
 }) {
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
+  const [inserting, setInserting] = useState(false);
+  const [rowInsertingId, setRowInsertingId] = useState<string | null>(null);
+  const [conflicts, setConflicts] = useState<Record<string, string>>({});
+  const [conflictsLoading, setConflictsLoading] = useState(isTaskTable);
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  const [tableScrollY, setTableScrollY] = useState(320);
 
-  // 列表变化时清理已不存在的选中项
+  const conflictIdSet = useMemo(() => new Set(Object.keys(conflicts)), [conflicts]);
+  /** 冲突扫描中：禁止勾选与插入 */
+  const listLocked = isTaskTable && conflictsLoading;
+
+  // 任务管理表下按计划开始日扫描冲突
+  useEffect(() => {
+    if (!isTaskTable || staged.length === 0) {
+      setConflicts({});
+      setConflictsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setConflictsLoading(true);
+    void (async () => {
+      try {
+        const table = await getActiveTable();
+        const map = await findStagedTaskConflicts(table, staged);
+        if (!cancelled) setConflicts(map);
+      } catch (e) {
+        console.error('[StagedTasksPane] 冲突扫描失败', e);
+        if (!cancelled) setConflicts({});
+      } finally {
+        if (!cancelled) setConflictsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isTaskTable, staged]);
+
+  // 列表变化 / 冲突变化时清理选中项（冲突项不可选）
   useEffect(() => {
     const alive = new Set(staged.map((r) => r.stagedId));
-    setSelectedKeys((prev) => prev.filter((k) => alive.has(String(k))));
-  }, [staged]);
+    setSelectedKeys((prev) =>
+      prev.filter((k) => alive.has(String(k)) && !conflictIdSet.has(String(k)))
+    );
+  }, [staged, conflictIdSet]);
+
+  // 表格区域随面板高度撑满，表头外的 body 可滚动
+  useEffect(() => {
+    const el = tableWrapRef.current;
+    if (!el) return;
+    const update = () => {
+      setTableScrollY(Math.max(120, el.clientHeight - 48));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const patchDate = (stagedId: string, field: StagedEditableField, value: string | null) => {
-    if (!value) return;
-    onUpdate(stagedId, { [field]: value });
+    // 实际结束允许清空；其余日期不可清空
+    if (!value && field !== 'actualEndDate') return;
+    onUpdate(stagedId, { [field]: value ?? '' });
+  };
+
+  const runInsert = async (
+    targets: StagedTaskItem[],
+    overwriteByStagedId?: Record<string, string>
+  ) => {
+    if (listLocked || targets.length === 0) return;
+    setInserting(true);
+    try {
+      await onInsert(targets, { overwriteByStagedId });
+      setSelectedKeys([]);
+    } finally {
+      setInserting(false);
+      setRowInsertingId(null);
+    }
+  };
+
+  const confirmOverwriteInsert = (record: StagedTaskItem) => {
+    if (listLocked) return;
+    const existId = conflicts[record.stagedId];
+    if (!existId) return;
+    Modal.confirm({
+      title: '确认覆盖插入',
+      content: '对应时间节点已存在任务，插入即会覆盖，是否确认插入任务',
+      okText: '确认插入',
+      cancelText: '取消',
+      centered: true,
+      onOk: async () => {
+        setRowInsertingId(record.stagedId);
+        await runInsert([record], { [record.stagedId]: existId });
+      },
+    });
   };
 
   const columns: ColumnsType<StagedTaskItem> = [
@@ -200,6 +305,16 @@ function StagedTasksPane({
       dataIndex: 'taskName',
       ellipsis: true,
       width: 160,
+      render: (v: string, record) => (
+        <span>
+          {v}
+          {conflicts[record.stagedId] ? (
+            <Tag color="orange" bordered={false} style={{ marginLeft: 4, fontSize: 11 }}>
+              已存在
+            </Tag>
+          ) : null}
+        </span>
+      ),
     },
     {
       title: '执行人',
@@ -207,6 +322,29 @@ function StagedTasksPane({
       width: 72,
       ellipsis: true,
       render: (v: string) => v || '—',
+    },
+    {
+      title: '所属岗位',
+      dataIndex: 'role',
+      width: 100,
+      render: (v: string, record) => (
+        <Select
+          size="small"
+          showSearch
+          optionFilterProp="label"
+          disabled={listLocked}
+          value={v || DEFAULT_TASK_ROLE}
+          options={[...TASK_ROLE_OPTIONS]}
+          onChange={(role) => {
+            const next = role as TaskRole;
+            onUpdate(record.stagedId, {
+              role: next,
+              taskName: buildTaskNameWithRole(record.taskName, next),
+            });
+          }}
+          style={{ width: '100%' }}
+        />
+      ),
     },
     {
       title: '优先级',
@@ -219,6 +357,7 @@ function StagedTasksPane({
           size="small"
           value={v}
           options={[...PRIORITY_OPTIONS]}
+          disabled={listLocked}
           onChange={(priority) => onUpdate(record.stagedId, { priority })}
           style={{ width: '100%' }}
         />
@@ -232,6 +371,7 @@ function StagedTasksPane({
         <DatePicker
           size="small"
           allowClear={false}
+          disabled={listLocked}
           value={v ? dayjs(v) : null}
           onChange={(d) =>
             patchDate(record.stagedId, 'planStartDate', d ? d.format('YYYY-MM-DD') : null)
@@ -248,6 +388,7 @@ function StagedTasksPane({
         <DatePicker
           size="small"
           allowClear={false}
+          disabled={listLocked}
           value={v ? dayjs(v) : null}
           onChange={(d) =>
             patchDate(record.stagedId, 'planEndDate', d ? d.format('YYYY-MM-DD') : null)
@@ -264,6 +405,7 @@ function StagedTasksPane({
         <DatePicker
           size="small"
           allowClear={false}
+          disabled={listLocked}
           value={v ? dayjs(v) : null}
           onChange={(d) =>
             patchDate(record.stagedId, 'actualStartDate', d ? d.format('YYYY-MM-DD') : null)
@@ -279,7 +421,9 @@ function StagedTasksPane({
       render: (v: string, record) => (
         <DatePicker
           size="small"
-          allowClear={false}
+          allowClear
+          placeholder="空"
+          disabled={listLocked}
           value={v ? dayjs(v) : null}
           onChange={(d) =>
             patchDate(record.stagedId, 'actualEndDate', d ? d.format('YYYY-MM-DD') : null)
@@ -291,12 +435,31 @@ function StagedTasksPane({
     {
       title: '',
       key: 'action',
-      width: 52,
+      width: isTaskTable ? 96 : 52,
       fixed: 'right',
       render: (_, record) => (
-        <Button type="link" size="small" danger onClick={() => onRemove(record.stagedId)}>
-          删除
-        </Button>
+        <Space size={0}>
+          {isTaskTable && conflicts[record.stagedId] ? (
+            <Button
+              type="link"
+              size="small"
+              loading={rowInsertingId === record.stagedId}
+              disabled={listLocked || inserting}
+              onClick={() => confirmOverwriteInsert(record)}
+            >
+              插入
+            </Button>
+          ) : null}
+          <Button
+            type="link"
+            size="small"
+            danger
+            disabled={listLocked || inserting}
+            onClick={() => onRemove(record.stagedId)}
+          >
+            删除
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -323,43 +486,104 @@ function StagedTasksPane({
     setSelectedKeys([]);
   };
 
+  const handleBatchInsert = async () => {
+    if (listLocked || inserting || staged.length === 0) return;
+    const selectedSet = new Set(selectedKeys.map(String));
+    const pool =
+      selectedSet.size > 0 ? staged.filter((t) => selectedSet.has(t.stagedId)) : staged;
+    // 批量插入只处理无冲突项；冲突项需行内手动确认覆盖
+    const targets = pool.filter((t) => !conflicts[t.stagedId]);
+    if (targets.length === 0) {
+      await toast(
+        'info',
+        conflictIdSet.size > 0
+          ? '所选任务对应时间已存在，请点行内「插入」并确认覆盖'
+          : '没有可插入的任务'
+      );
+      return;
+    }
+    await runInsert(targets);
+  };
+
+  const conflictCount = conflictIdSet.size;
+
   return (
-    <div className="staged-tasks-pane">
-      <div className="current-view-meta">
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          已生成 {staged.length} 条（切表不丢失）
-          {selectedKeys.length > 0 ? ` · 已选 ${selectedKeys.length}` : ''}
-        </Typography.Text>
-        <Space size={4}>
-          <Button
-            type="link"
+    <Spin
+      spinning={listLocked}
+      tip="正在检查时间冲突…"
+      className="staged-tasks-spin"
+      wrapperClassName="staged-tasks-spin-wrap"
+    >
+      <div className="staged-tasks-pane">
+        <div className="current-view-meta">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            已生成 {staged.length} 条（切表不丢失）
+            {selectedKeys.length > 0 ? ` · 已选 ${selectedKeys.length}` : ''}
+            {isTaskTable && listLocked
+              ? ' · 检查冲突中…'
+              : isTaskTable && conflictCount > 0
+                ? ` · ${conflictCount} 条时间冲突`
+                : ''}
+          </Typography.Text>
+          <Space size={4} wrap>
+            {isTaskTable ? (
+              <Button
+                type="link"
+                size="small"
+                loading={inserting && !rowInsertingId}
+                disabled={listLocked || staged.length === 0}
+                onClick={() => void handleBatchInsert()}
+              >
+                {selectedKeys.length > 0 ? `插入选中(${selectedKeys.length})` : '插入'}
+              </Button>
+            ) : null}
+            <Button
+              type="link"
+              size="small"
+              danger
+              disabled={listLocked || selectedKeys.length === 0 || inserting}
+              onClick={handleBatchDelete}
+            >
+              批量删除
+            </Button>
+            <Button
+              type="link"
+              size="small"
+              danger
+              disabled={listLocked || inserting}
+              onClick={onClear}
+            >
+              清空全部
+            </Button>
+          </Space>
+        </div>
+        <div className="staged-tasks-table-wrap" ref={tableWrapRef}>
+          <Table<StagedTaskItem>
             size="small"
-            danger
-            disabled={selectedKeys.length === 0}
-            onClick={handleBatchDelete}
-          >
-            批量删除
-          </Button>
-          <Button type="link" size="small" danger onClick={onClear}>
-            清空全部
-          </Button>
-        </Space>
+            rowKey="stagedId"
+            columns={columns}
+            dataSource={staged}
+            pagination={false}
+            scroll={{ x: 1080, y: tableScrollY }}
+            bordered
+            className="staged-tasks-table"
+            rowClassName={(record) => (conflicts[record.stagedId] ? 'staged-row-conflict' : '')}
+            rowSelection={{
+              selectedRowKeys: selectedKeys,
+              onChange: setSelectedKeys,
+              getCheckboxProps: (record) => ({
+                disabled: listLocked || Boolean(conflicts[record.stagedId]),
+                title: listLocked
+                  ? '正在检查冲突，请稍候'
+                  : conflicts[record.stagedId]
+                    ? '对应时间已存在任务，请使用行内插入'
+                    : undefined,
+              }),
+            }}
+          />
+        </div>
       </div>
-      <Table<StagedTaskItem>
-        size="small"
-        rowKey="stagedId"
-        columns={columns}
-        dataSource={staged}
-        pagination={false}
-        scroll={{ x: 960, y: 420 }}
-        bordered
-        className="staged-tasks-table"
-        rowSelection={{
-          selectedRowKeys: selectedKeys,
-          onChange: setSelectedKeys,
-        }}
-      />
-    </div>
+    </Spin>
   );
 }
 
@@ -368,19 +592,39 @@ export function TaskGeneratePanel() {
   const { staged, stageTasks, removeOne, removeMany, updateOne, clearAll } = useStagedTasks();
   const [subTab, setSubTab] = useState('current-view');
   const [activeSchedule, setActiveSchedule] = useState<ScheduleRow | null>(null);
-  const [previewTasks, setPreviewTasks] = useState<GeneratedTaskPreview[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [isTaskTable, setIsTaskTable] = useState(false);
+
+  // 跟踪当前是否在任务管理表（决定「插入」按钮显隐）
+  useEffect(() => {
+    let cancelled = false;
+    const refreshTaskTableFlag = async () => {
+      try {
+        const table = await getActiveTable();
+        const ok = await isTaskManagementTable(table);
+        if (!cancelled) setIsTaskTable(ok);
+      } catch {
+        if (!cancelled) setIsTaskTable(false);
+      }
+    };
+    void refreshTaskTableFlag();
+    const off = bitable.base.onSelectionChange(() => {
+      void refreshTaskTableFlag();
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, []);
 
   const openGenerateModal = (row: ScheduleRow) => {
     setActiveSchedule(row);
-    setPreviewTasks(buildGeneratedTaskPreviews(row));
     setModalOpen(true);
   };
 
   const closeModal = () => {
     setModalOpen(false);
     setActiveSchedule(null);
-    setPreviewTasks([]);
   };
 
   const handleModalGenerate = async (tasks: GeneratedTaskPreview[]) => {
@@ -388,6 +632,43 @@ export function TaskGeneratePanel() {
     const count = stageTasks(activeSchedule.recordId, tasks);
     await toast('success', `已生成 ${count} 条任务`);
     setSubTab('staged-tasks');
+  };
+
+  const handleInsert = async (
+    tasks: StagedTaskItem[],
+    options?: { overwriteByStagedId?: Record<string, string> }
+  ) => {
+    try {
+      const table = await getActiveTable();
+      if (!(await isTaskManagementTable(table))) {
+        await toast('info', `请先切换到「${TASK_TABLE_NAME}」表再插入`);
+        return;
+      }
+      const overwrite = options?.overwriteByStagedId;
+      const result = await insertStagedTasks(table, tasks, {
+        overwriteByStagedId: overwrite,
+      });
+      if (result.successIds.length > 0) {
+        removeMany(result.successIds);
+      }
+      const isOverwrite = Boolean(overwrite && Object.keys(overwrite).length > 0);
+      if (result.failed === 0) {
+        await toast(
+          'success',
+          isOverwrite ? `已覆盖插入 ${result.success} 条任务` : `已插入 ${result.success} 条任务`
+        );
+      } else if (result.success === 0) {
+        await toast(
+          'error',
+          `插入失败：${result.errors[0] ?? '未知错误'}${result.errors.length > 1 ? ` 等 ${result.failed} 条` : ''}`
+        );
+      } else {
+        await toast('info', `成功 ${result.success} 条，失败 ${result.failed} 条`);
+      }
+    } catch (e) {
+      console.error('[TaskGeneratePanel] 插入失败', e);
+      await toast('error', `插入失败：${(e as Error)?.message ?? '未知错误'}`);
+    }
   };
 
   return (
@@ -427,10 +708,12 @@ export function TaskGeneratePanel() {
         ) : (
           <StagedTasksPane
             staged={staged}
+            isTaskTable={isTaskTable}
             onRemove={removeOne}
             onRemoveMany={removeMany}
             onUpdate={updateOne}
             onClear={clearAll}
+            onInsert={handleInsert}
           />
         )}
       </div>
@@ -438,7 +721,6 @@ export function TaskGeneratePanel() {
       <GenerateTaskModal
         open={modalOpen}
         schedule={activeSchedule}
-        tasks={previewTasks}
         onClose={closeModal}
         onGenerate={(tasks) => void handleModalGenerate(tasks)}
       />

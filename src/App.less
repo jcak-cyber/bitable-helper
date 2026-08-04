@@ -23,7 +23,7 @@
 html,
 body,
 #root {
-  height: auto;
+  height: 100%;
   min-height: 0;
 }
 
@@ -38,6 +38,11 @@ body {
 .app {
   padding: 14px 14px 18px;
   margin: 0 auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  box-sizing: border-box;
 }
 
 // ========== 品牌头 ==========
@@ -50,6 +55,7 @@ body {
   border-radius: @radius;
   background: linear-gradient(120deg, rgba(51, 112, 255, 0.08), rgba(255, 255, 255, 0.9));
   border: 1px solid rgba(51, 112, 255, 0.12);
+  flex-shrink: 0;
 }
 
 .app-brand-mark {
@@ -92,8 +98,14 @@ body {
 
 // ========== Tabs ==========
 .app-tabs {
-  .ant-tabs-nav {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+
+  > .ant-tabs-nav {
     margin-bottom: 12px;
+    flex-shrink: 0;
     &::before {
       border-bottom-color: @border-light;
     }
@@ -109,9 +121,28 @@ body {
     border-radius: 3px 3px 0 0;
   }
 
+  > .ant-tabs-content-holder {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .ant-tabs-content {
+    height: 100%;
+  }
+
+  .ant-tabs-tabpane {
+    height: 100%;
+  }
+
+  .ant-tabs-tabpane-active {
+    display: flex !important;
+    flex-direction: column;
+  }
 }
 
 .panel-loading {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -173,6 +204,7 @@ body {
 // 内层用 Segmented，和外层 Tabs 区分层级
 .task-gen-segmented {
   margin-bottom: 12px;
+  flex-shrink: 0;
 
   &.ant-segmented {
     background: rgba(31, 35, 41, 0.06);
@@ -198,7 +230,11 @@ body {
 }
 
 .task-gen-pane {
+  flex: 1;
+  min-height: 0;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .subtab-badge {
@@ -220,11 +256,41 @@ body {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 8px;
+  flex-shrink: 0;
 }
 
 .current-view-pane,
 .staged-tasks-pane {
   min-width: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.staged-tasks-spin-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+
+  > .ant-spin-container {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ant-spin-blur {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+}
+
+.staged-tasks-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .staged-tasks-table {
@@ -232,6 +298,14 @@ body {
 
   .ant-table-thead > tr > th {
     white-space: nowrap;
+  }
+
+  .staged-row-conflict {
+    background: rgba(255, 169, 64, 0.06);
+  }
+
+  .ant-checkbox-wrapper-disabled {
+    cursor: not-allowed;
   }
 }
 
@@ -270,9 +344,12 @@ body {
 
 // ========== 工时面板 ==========
 .work-hour-panel {
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
 }
 
 .mode-block {
@@ -331,6 +408,10 @@ body {
 // ========== 任务生成 / 排期列表 ==========
 .task-generate-panel {
   padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 
   > .panel-empty {
     margin-top: 8px;
@@ -374,8 +455,8 @@ body {
 
 .schedule-list {
   margin-top: 2px;
-  // 内容少时随内容收缩；过多时内部滚动，避免整页被撑得过高
-  max-height: min(60vh, 360px);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -462,7 +543,40 @@ body {
   border-top: 1px dashed @border-light;
 }
 
-// ========== 生成任务弹窗 ==========
+// ========== 生成任务抽屉（侧栏全高） ==========
+.generate-task-drawer {
+  .ant-drawer-header {
+    padding: 12px 14px;
+  }
+
+  .ant-drawer-footer {
+    padding: 10px 14px;
+  }
+
+  .ant-table {
+    font-size: 12px;
+  }
+}
+
+.generate-task-drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.generate-task-drawer-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.generate-task-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .generate-task-summary {
   margin-bottom: 12px;
   padding: 10px 12px;
@@ -472,6 +586,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex-shrink: 0;
+}
+
+.generate-task-weekend {
+  margin-top: 2px;
+  font-size: 12px;
+  color: @ink;
 }
 
 .generate-task-summary-title {
@@ -488,12 +609,6 @@ body {
   color: @ink-secondary;
 }
 
-.generate-task-modal {
-  .ant-table {
-    font-size: 12px;
-  }
-}
-
 .generate-task-batch {
   display: flex;
   align-items: center;
@@ -504,6 +619,7 @@ body {
   border-radius: @radius-sm;
   background: @surface-muted;
   border: 1px solid @border-light;
+  flex-shrink: 0;
 }
 
 .generate-task-batch-label {
