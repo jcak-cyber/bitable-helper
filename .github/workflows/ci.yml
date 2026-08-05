@@ -61,6 +61,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: 检查 NPM_TOKEN
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::未配置 GitHub Secret「NPM_TOKEN」，或值为空。请用 npm 账号 zzy1287783907 创建具有 Publish 权限的 token，并写入仓库 Settings → Secrets → Actions → NPM_TOKEN"
+            exit 1
+          fi
+
       - name: 递增 patch 版本号
         # [skip ci] 提交信息避免再次触发本工作流，形成死循环
         run: |
@@ -68,6 +77,7 @@ jobs:
 
       - name: 发布到 npm
         # npm publish 会触发 prepublishOnly 钩子自动构建 dist
+        # 若返回 E404：通常是 token 无效，或 token 所属账号不是包维护者（无权发布时 npm 也会报 404）
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public
