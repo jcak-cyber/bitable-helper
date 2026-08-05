@@ -6,13 +6,11 @@ on:
   pull_request:
     branches: [main]
 
-# 同一分支的并发运行只保留最新，避免版本号递增任务相互冲突
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  # —— 流程校验：lint + 类型检查 + 构建 ——
   verify:
     runs-on: ubuntu-latest
     steps:
@@ -31,71 +29,3 @@ jobs:
 
       - name: 类型检查 + 构建
         run: npm run build
-
-  # —— 版本递增 + 发布 npm（OIDC Trusted Publisher，无需 NPM_TOKEN）——
-  # npm 后台 Trusted Publisher 须配置：
-  #   Organization/user: jcak-cyber
-  #   Repository: bitable-helper
-  #   Workflow filename: ci.yml
-  #   Environment: 留空（除非本 job 使用了 environment）
-  bump-version:
-    needs: verify
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # 推送版本提交与 tag
-      id-token: write # OIDC：向 npm 证明本 workflow 身份
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      # 重要：不要设置 registry-url。
-      # setup-node 设置 registry-url 时会写入 _authToken=${NODE_AUTH_TOKEN}；
-      # 未配置 token 时为空串，npm 会走经典鉴权并跳过 OIDC，最终报 E404。
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: 确保 npm 支持 OIDC Trusted Publishing
-        run: |
-          npm install -g npm@latest
-          npm -v
-          node -v
-
-      - name: 清理会阻断 OIDC 的空 authToken 配置
-        run: |
-          # 项目 / 用户级 .npmrc 若含空 _authToken，会导致跳过 OIDC
-          for f in .npmrc "$HOME/.npmrc" "${NPM_CONFIG_USERCONFIG:-}"; do
-            [ -n "$f" ] && [ -f "$f" ] || continue
-            sed -i '/_authToken/d' "$f" || true
-            echo "---- $f ----"
-            cat "$f" || true
-          done
-          # 确认 GitHub OIDC 环境变量存在（不打印 token）
-          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
-            echo "::error::缺少 ACTIONS_ID_TOKEN_REQUEST_URL，id-token: write 可能未生效"
-            exit 1
-          fi
-          echo "OIDC request URL 已就绪"
-
-      - name: 安装依赖
-        run: npm ci
-
-      - name: 配置 Git 身份
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: 递增 patch 版本号
-        # [skip ci] 提交信息避免再次触发本工作流，形成死循环
-        run: |
-          npm version patch -m "chore: 版本号递增至 %s [skip ci]"
-
-      - name: 发布到 npm
-        # Trusted Publisher（OIDC）：不要设置 NODE_AUTH_TOKEN / NPM_TOKEN
-        run: npm publish --access public
-
-      - name: 推送版本提交与标签
-        run: git push --follow-tags origin main
