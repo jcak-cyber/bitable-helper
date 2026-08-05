@@ -42,3 +42,6 @@ Thumbs.db
 
 # TypeScript 增量编译缓存
 *.tsbuildinfo
+
+# 其他
+npm_key.text

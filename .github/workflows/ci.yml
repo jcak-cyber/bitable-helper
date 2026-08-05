@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# 权限配置
+permissions:
+  id-token: write # Required for OIDC
+  contents: write # 允许仓库内容修改，用于创建 标签和版本提交
+
 # 同一分支的并发运行只保留最新，避免版本号递增任务相互冲突
 concurrency:
   group: ci-${{ github.ref }}
