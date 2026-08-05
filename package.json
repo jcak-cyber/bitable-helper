@@ -7,7 +7,7 @@
   "author": "zzy",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jcak-cyber/bitable-helper.git"
+    "url": "https://github.com/jcak-cyber/bitable-helper.git"
   },
   "bin": {
     "bitable-helper": "bin/cli.mjs"
