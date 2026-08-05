@@ -6,11 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-# 权限配置
-permissions:
-  id-token: write # Required for OIDC
-  contents: write # 允许仓库内容修改，用于创建 标签和版本提交
-
 # 同一分支的并发运行只保留最新，避免版本号递增任务相互冲突
 concurrency:
   group: ci-${{ github.ref }}
@@ -37,26 +32,31 @@ jobs:
       - name: 类型检查 + 构建
         run: npm run build
 
-  # —— 版本递增 + 发布 npm：仅 push 到 main 且校验通过后执行 ——
+  # —— 版本递增 + 发布 npm（OIDC Trusted Publisher，无需 NPM_TOKEN）——
+  # 注意：npm 后台 Trusted Publisher 的 Workflow filename 须为「ci.yml」
   bump-version:
     needs: verify
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # 推送版本提交与 tag
+      id-token: write # OIDC：向 npm 证明本 workflow 身份
     steps:
       - uses: actions/checkout@v4
         with:
-          # 拉取完整历史并使用可推送的 token
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
-          # 配置发布目标源，配合 NODE_AUTH_TOKEN 完成鉴权
+          # Trusted Publishing 需要 npm CLI >= 11.5.1；Node 24 自带满足要求
+          node-version: 24
           registry-url: https://registry.npmjs.org
+
+      - name: 确保 npm 支持 OIDC Trusted Publishing
+        run: |
+          npm install -g npm@latest
+          npm -v
 
       - name: 安装依赖
         run: npm ci
@@ -66,36 +66,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: 校验 npm 登录身份
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::未配置 GitHub Secret「NPM_TOKEN」。请到仓库 Settings → Secrets → Actions 添加。"
-            exit 1
-          fi
-          WHOAMI=$(npm whoami --registry=https://registry.npmjs.org 2>/dev/null || true)
-          if [ -z "$WHOAMI" ]; then
-            echo "::error::NPM_TOKEN 无效。请用 npm 账号 zzy1287783907 重新创建 Automation Token（需 Publish 权限），并更新 Secret NPM_TOKEN。注意：不要加引号，不要加 Bearer 前缀。"
-            exit 1
-          fi
-          echo "当前 npm 登录账号: $WHOAMI"
-          EXPECTED="zzy1287783907"
-          if [ "$WHOAMI" != "$EXPECTED" ]; then
-            echo "::error::当前 token 属于「$WHOAMI」，但包 bitable-helper 维护者是「$EXPECTED」。请用维护者账号创建 token 再更新 NPM_TOKEN。"
-            exit 1
-          fi
-
       - name: 递增 patch 版本号
         # [skip ci] 提交信息避免再次触发本工作流，形成死循环
         run: |
           npm version patch -m "chore: 版本号递增至 %s [skip ci]"
 
       - name: 发布到 npm
-        # npm publish 会触发 prepublishOnly 钩子自动构建 dist
-        # E404：多为 token 账号不是包维护者，或 token 无 Publish 权限
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # 使用 Trusted Publisher（OIDC），不要设置 NODE_AUTH_TOKEN / NPM_TOKEN
+        # 否则会走旧 token 鉴权并覆盖 OIDC
         run: npm publish --access public
 
       - name: 推送版本提交与标签
