@@ -75,7 +75,7 @@ bitable-helper 8080
 # 安装依赖
 npm install
 
-# 启动开发服务器（默认 http://localhost:5173）
+# 启动开发服务器（默认 http://localhost:5174，与 CLI 的 5173 错开）
 npm run dev
 
 # 生产构建（先做 tsc 类型检查，再 vite 打包到 dist/）
@@ -92,7 +92,7 @@ npm run preview
 
 插件以 iframe 形式嵌入多维表格。开发态需将 dev server 地址填入多维表格的「自定义插件」入口：
 
-1. 运行 `npm run dev`，确认 `http://localhost:5173` 可访问
+1. 运行 `npm run dev`，确认 `http://localhost:5174` 可访问
 2. 在多维表格中添加插件，填入上述地址加载
 
 > Vite 已配置 `host: 0.0.0.0` 与 `cors: true`，以支持 iframe 跨域加载本地 dev server（见 [vite.config.ts](vite.config.ts)）。

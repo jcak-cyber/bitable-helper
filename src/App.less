@@ -266,6 +266,14 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
+
+  > .panel-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+  }
 }
 
 .staged-tasks-spin-wrap {
@@ -291,6 +299,22 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  // 让 antd Table 根节点吃满剩余高度，配合 scroll.y
+  .staged-tasks-table {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .ant-spin-nested-loading,
+  .ant-spin-container,
+  .ant-table-wrapper,
+  .ant-table,
+  .ant-table-container {
+    height: 100%;
+  }
 }
 
 .staged-tasks-table {

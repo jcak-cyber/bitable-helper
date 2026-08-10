@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Key } from 'react';
 import {
   Empty,
@@ -188,6 +188,7 @@ function StagedTasksPane({
   onRemoveMany,
   onUpdate,
   onClear,
+  onRefresh,
   onInsert,
 }: {
   staged: StagedTaskItem[];
@@ -197,6 +198,8 @@ function StagedTasksPane({
   onRemoveMany: (stagedIds: string[]) => void;
   onUpdate: (stagedId: string, patch: Partial<StagedTaskItem>) => void;
   onClear: () => void;
+  /** 从 localStorage 重新拉取已生成任务 */
+  onRefresh: () => void | Promise<void>;
   onInsert: (
     tasks: StagedTaskItem[],
     options?: { overwriteByStagedId?: Record<string, string> }
@@ -204,11 +207,22 @@ function StagedTasksPane({
 }) {
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [inserting, setInserting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [rowInsertingId, setRowInsertingId] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<Record<string, string>>({});
   const [conflictsLoading, setConflictsLoading] = useState(isTaskTable);
   const tableWrapRef = useRef<HTMLDivElement>(null);
   const [tableScrollY, setTableScrollY] = useState(320);
+
+  const handleRefresh = async () => {
+    if (refreshing || inserting) return;
+    setRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const conflictIdSet = useMemo(() => new Set(Object.keys(conflicts)), [conflicts]);
   /** 冲突扫描中：禁止勾选与插入 */
@@ -248,18 +262,36 @@ function StagedTasksPane({
     );
   }, [staged, conflictIdSet]);
 
-  // 表格区域随面板高度撑满，表头外的 body 可滚动
-  useEffect(() => {
+  const hasRows = staged.length > 0;
+
+  // 空状态 ↔ 有数据会整段换 DOM；必须在表格挂载后再量高，否则 scroll.y 偏小只显示两三行
+  useLayoutEffect(() => {
+    if (!hasRows) return;
     const el = tableWrapRef.current;
     if (!el) return;
+
     const update = () => {
-      setTableScrollY(Math.max(120, el.clientHeight - 48));
+      const next = Math.max(160, Math.floor(el.clientHeight - 52));
+      setTableScrollY((prev) => (prev === next ? prev : next));
     };
+
     update();
+    // flex 高度常在首帧未算完，连续两帧再量
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      update();
+      raf2 = requestAnimationFrame(update);
+    });
+
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      ro.disconnect();
+    };
+  }, [hasRows, listLocked, refreshing]);
 
   const patchDate = (stagedId: string, field: StagedEditableField, value: string | null) => {
     // 实际结束允许清空；其余日期不可清空
@@ -466,16 +498,31 @@ function StagedTasksPane({
 
   if (staged.length === 0) {
     return (
-      <div className="panel-empty">
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={
-            <div className="empty-copy">
-              <div className="empty-title">暂无已生成任务</div>
-              <div className="empty-desc">在「当前排期」中预览并点击生成后，任务会显示在这里</div>
-            </div>
-          }
-        />
+      <div className="staged-tasks-pane">
+        <div className="current-view-meta">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            已生成 0 条（文档表缓存）
+          </Typography.Text>
+          <Button
+            type="link"
+            size="small"
+            loading={refreshing}
+            onClick={() => void handleRefresh()}
+          >
+            刷新
+          </Button>
+        </div>
+        <div className="panel-empty">
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={
+              <div className="empty-copy">
+                <div className="empty-title">暂无已生成任务</div>
+                <div className="empty-desc">在「当前排期」中预览并点击生成后，任务会显示在这里</div>
+              </div>
+            }
+          />
+        </div>
       </div>
     );
   }
@@ -517,7 +564,7 @@ function StagedTasksPane({
       <div className="staged-tasks-pane">
         <div className="current-view-meta">
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            已生成 {staged.length} 条（切表不丢失）
+            已生成 {staged.length} 条（同步至「多维表格助手缓存」表）
             {selectedKeys.length > 0 ? ` · 已选 ${selectedKeys.length}` : ''}
             {isTaskTable && listLocked
               ? ' · 检查冲突中…'
@@ -526,6 +573,15 @@ function StagedTasksPane({
                 : ''}
           </Typography.Text>
           <Space size={4} wrap>
+            <Button
+              type="link"
+              size="small"
+              loading={refreshing}
+              disabled={listLocked || inserting}
+              onClick={() => void handleRefresh()}
+            >
+              刷新
+            </Button>
             {isTaskTable ? (
               <Button
                 type="link"
@@ -589,7 +645,8 @@ function StagedTasksPane({
 
 export function TaskGeneratePanel() {
   const { isScheduleTable, tableName, viewName, schedules, loading } = useScheduleData();
-  const { staged, stageTasks, removeOne, removeMany, updateOne, clearAll } = useStagedTasks();
+  const { staged, stageTasks, removeOne, removeMany, updateOne, clearAll, reloadFromCache } =
+    useStagedTasks();
   const [subTab, setSubTab] = useState('current-view');
   const [activeSchedule, setActiveSchedule] = useState<ScheduleRow | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -632,6 +689,24 @@ export function TaskGeneratePanel() {
     const count = stageTasks(activeSchedule.recordId, tasks);
     await toast('success', `已生成 ${count} 条任务`);
     setSubTab('staged-tasks');
+  };
+
+  const handleRefreshStaged = async () => {
+    const result = await reloadFromCache();
+    if (result.source === 'error') {
+      await toast('error', result.error || '刷新失败');
+      return;
+    }
+    if (result.count > 0) {
+      await toast(
+        'success',
+        result.source === 'base'
+          ? `已从文档缓存加载 ${result.count} 条任务`
+          : `已加载 ${result.count} 条任务`
+      );
+      return;
+    }
+    await toast('info', '无缓存任务');
   };
 
   const handleInsert = async (
@@ -713,6 +788,7 @@ export function TaskGeneratePanel() {
             onRemoveMany={removeMany}
             onUpdate={updateOne}
             onClear={clearAll}
+            onRefresh={handleRefreshStaged}
             onInsert={handleInsert}
           />
         )}
