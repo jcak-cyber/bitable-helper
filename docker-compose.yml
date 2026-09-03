@@ -1,0 +1,15 @@
+# 自有服务器 Docker 部署（无域名）：Nginx 托管 + Cloudflare Quick Tunnel 提供 HTTPS
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    # 仅本机/内网访问；公网通过 tunnel 暴露，不必映射 80 到公网
+    ports:
+      - "127.0.0.1:8080:80"
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      - web
+    command: tunnel --no-autoupdate --url http://web:80
