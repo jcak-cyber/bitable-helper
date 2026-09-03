@@ -139,10 +139,6 @@ npm run preview
 ```
 bin/
 └── cli.mjs                   # CLI：用 sirv 托管 dist，供全局安装后启动
-deploy/
-└── nginx.conf                # Docker Nginx：SPA + CORS
-Dockerfile                    # 多阶段构建（Node build → Nginx）
-docker-compose.yml            # web + Cloudflare Quick Tunnel
 src/
 ├── App.tsx                   # 主壳：标题 + Tabs（工时管理 / 任务生成）
 ├── main.tsx                  # 入口：React + antd ConfigProvider
@@ -201,59 +197,6 @@ verify（lint + build）→ publish（递增 patch → npm publish → 推送 ta
 npm version patch
 npm publish --access public
 ```
-
-## 服务器 Docker 部署（无域名）
-
-插件是静态站点。飞书侧栏一般需要 **公网 HTTPS**。没有域名时，用 Docker Compose 在本机跑 Nginx，再通过 **Cloudflare Quick Tunnel** 拿到 `https://xxxx.trycloudflare.com` 填入飞书即可（不必开放 80/443 公网端口）。
-
-### 前置
-
-- 服务器已安装 Docker 与 Docker Compose
-- 服务器能访问外网（拉镜像、建立隧道）
-
-### 启动
-
-```bash
-# 在仓库根目录
-docker compose up -d --build
-```
-
-查看隧道分配的 HTTPS 地址：
-
-```bash
-docker compose logs -f tunnel
-```
-
-日志中会出现类似：
-
-```text
-https://随机子域.trycloudflare.com
-```
-
-### 接入飞书
-
-1. 浏览器先打开该 HTTPS 地址，确认能看到「多维表格助手」页面
-2. 在飞书多维表格「自定义插件」入口填入该地址并加载
-3. 验证工时管理 / 任务生成可用
-
-### 常用命令
-
-```bash
-# 重建并重启（代码更新后）
-docker compose up -d --build
-
-# 停止
-docker compose down
-
-# 仅看 web 是否在本机 8080 可用
-curl -I http://127.0.0.1:8080
-```
-
-### 注意
-
-- **Quick Tunnel 地址会变**：`tunnel` 容器重启后可能换成新的 `*.trycloudflare.com`，需同步改飞书插件 URL。
-- 若需要固定地址：可改用 Cloudflare 账号下的 Named Tunnel（仍可不买自有域名）；有域名后也可去掉 `tunnel` 服务，改由宿主机 Nginx / 反代终结 HTTPS。
-- 相关文件：[`Dockerfile`](Dockerfile)、[`docker-compose.yml`](docker-compose.yml)、[`deploy/nginx.conf`](deploy/nginx.conf)
 
 ## License
 
