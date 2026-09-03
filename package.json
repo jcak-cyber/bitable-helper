@@ -1,6 +1,6 @@
 {
   "name": "bitable-helper",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "type": "module",
   "description": "飞书多维表格助手：工时管理与任务生成",
   "license": "MIT",
