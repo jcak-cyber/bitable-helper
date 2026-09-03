@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Drawer,
   Empty,
@@ -33,7 +33,7 @@ interface Props {
   open: boolean;
   schedule: ScheduleRow | null;
   onClose: () => void;
-  /** 点击「生成」：提交当前预览列表（含编辑后的实际日期/优先级） */
+  /** 点击「生成」：提交选中项；未勾选时提交全部预览行 */
   onGenerate: (tasks: GeneratedTaskPreview[]) => void;
 }
 
@@ -86,18 +86,31 @@ export function GenerateTaskModal({ open, schedule, onClose, onGenerate }: Props
     setBatchRole(null);
   }, [open, schedule, includeWeekend]);
 
-  // Drawer 打开后按可用高度撑满表格滚动区
-  useEffect(() => {
-    if (!open) return;
+  // Drawer 打开且有数据后按容器实测高度撑满表格，避免下方大块留白
+  useLayoutEffect(() => {
+    if (!open || rows.length === 0) return;
     const el = tableWrapRef.current;
     if (!el) return;
+
     const update = () => {
-      setTableScrollY(Math.max(120, el.clientHeight - 48));
+      const next = Math.max(160, Math.floor(el.clientHeight - 52));
+      setTableScrollY((prev) => (prev === next ? prev : next));
     };
+
     update();
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      update();
+      raf2 = requestAnimationFrame(update);
+    });
+
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      ro.disconnect();
+    };
   }, [open, rows.length]);
 
   const rangeText =
@@ -272,9 +285,16 @@ export function GenerateTaskModal({ open, schedule, onClose, onGenerate }: Props
   const canApplyBatch =
     selectedKeys.length > 0 && Boolean(batchStart || batchEnd || batchPriority || batchRole);
 
+  const tasksToGenerate = useMemo(() => {
+    if (rows.length === 0) return [];
+    if (selectedKeys.length === 0) return rows;
+    const selected = new Set(selectedKeys.map(String));
+    return rows.filter((row) => selected.has(rowKeyOf(row)));
+  }, [rows, selectedKeys]);
+
   const handleGenerate = () => {
-    if (rows.length === 0) return;
-    onGenerate(rows.map((r) => ({ ...r })));
+    if (tasksToGenerate.length === 0) return;
+    onGenerate(tasksToGenerate.map((r) => ({ ...r })));
     onClose();
   };
 
@@ -294,8 +314,14 @@ export function GenerateTaskModal({ open, schedule, onClose, onGenerate }: Props
       footer={
         <div className="generate-task-drawer-footer">
           <Button onClick={onClose}>取消</Button>
-          <Button type="primary" disabled={rows.length === 0} onClick={handleGenerate}>
-            生成
+          <Button
+            type="primary"
+            disabled={tasksToGenerate.length === 0}
+            onClick={handleGenerate}
+          >
+            {selectedKeys.length > 0
+              ? `生成选中(${tasksToGenerate.length})`
+              : `生成全部(${rows.length})`}
           </Button>
         </div>
       }

@@ -569,12 +569,28 @@ body {
 
 // ========== 生成任务抽屉（侧栏全高） ==========
 .generate-task-drawer {
+  .ant-drawer-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
   .ant-drawer-header {
     padding: 12px 14px;
+    flex-shrink: 0;
+  }
+
+  .ant-drawer-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
   .ant-drawer-footer {
     padding: 10px 14px;
+    flex-shrink: 0;
   }
 
   .ant-table {
@@ -599,6 +615,16 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  .ant-table-wrapper,
+  .ant-spin-nested-loading,
+  .ant-spin-container,
+  .ant-table,
+  .ant-table-container {
+    height: 100%;
+  }
 }
 
 .generate-task-summary {
